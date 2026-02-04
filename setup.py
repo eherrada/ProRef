@@ -22,6 +22,20 @@ setup(
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",
         ],
+        "export": [
+            "openpyxl>=3.1.0",
+        ],
+        "anthropic": [
+            "anthropic>=0.18.0",
+        ],
+        "google": [
+            "google-generativeai>=0.4.0",
+        ],
+        "all": [
+            "openpyxl>=3.1.0",
+            "anthropic>=0.18.0",
+            "google-generativeai>=0.4.0",
+        ],
     },
     entry_points={
         "console_scripts": [

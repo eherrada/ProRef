@@ -66,6 +66,22 @@ EXPECTED:
 - **Cross-ticket awareness** prevents duplicate work
 - **Smart suggestions** based on similarity
 
+### 📈 Quality Scoring
+AI-powered ticket quality assessment (1-10 scale):
+- **Ready (8-10)** — Well-defined, implementation-ready
+- **Needs Work (5-7)** — Minor improvements needed
+- **Not Ready (1-4)** — Requires significant refinement
+
+Evaluates: title clarity, description detail, acceptance criteria, edge cases
+
+### 🏭 Domain Presets
+Context-aware prompts for different industries:
+- **Healthcare** — HIPAA compliance, clinical workflows, EHR integration
+- **Fintech** — Transaction integrity, PCI-DSS, fraud prevention
+- **E-commerce** — Inventory management, payments, promotions
+- **SaaS** — Multi-tenancy, RBAC, API versioning
+- **Generic** — General software development
+
 ### 📊 Workflow Dashboard
 Visual progress tracking through the refinement pipeline:
 
@@ -84,9 +100,10 @@ Visual progress tracking through the refinement pipeline:
 Modern dark-themed UI built with Streamlit:
 
 - **Dashboard** — Workflow progress at a glance
-- **Tickets** — Browse with filters and pagination
-- **Generate** — Create questions and test cases
+- **Tickets** — Browse with filters, quality scores, and change indicators
+- **Generate** — Create questions and test cases with domain presets
 - **Publish** — Review and push to Jira
+- **Reports** — Sprint summaries, quality breakdown, export to Excel/Markdown
 - **Settings** — Configure AI providers and Jira connection
 
 ### CLI
@@ -209,7 +226,7 @@ proref/
 │   │
 │   ├── db/
 │   │   ├── model.py        # SQLAlchemy models
-│   │   ├── save.py         # Data persistence
+│   │   ├── save.py         # Data persistence + quality scores
 │   │   └── embedding.py    # Vector storage
 │   │
 │   ├── jira/
@@ -221,7 +238,10 @@ proref/
 │   │   ├── matching.py     # Semantic search
 │   │   ├── question_generator.py
 │   │   ├── test_case_generator.py
-│   │   └── related_tickets.py
+│   │   ├── related_tickets.py
+│   │   ├── quality_scorer.py   # AI quality assessment
+│   │   ├── prompts.py          # Domain presets
+│   │   └── exporter.py         # Excel/Markdown export
 │   │
 │   └── utils/
 │       └── retry.py        # Retry decorator
@@ -230,7 +250,7 @@ proref/
 │   ├── proref.db           # SQLite database
 │   └── config.json         # User configuration
 │
-├── tests/                  # 73 unit tests
+├── tests/                  # 106 unit tests
 └── scripts/                # Legacy CLI scripts
 ```
 
@@ -275,12 +295,15 @@ pytest --cov=app --cov-report=html
 pytest tests/test_generators.py -v
 ```
 
-**73 tests** covering:
+**106 tests** covering:
 - Configuration management
 - Database models
 - Question/test generation
 - Jira integration
 - Embedding operations
+- Quality scoring
+- Domain prompts
+- Export functionality
 - Retry logic
 
 ---
@@ -292,11 +315,14 @@ pytest tests/test_generators.py -v
 - [x] Web UI with modern design
 - [x] Jira comment publishing (ADF format)
 - [x] Semantic ticket search
-- [ ] Batch processing with progress tracking
-- [ ] Export to Markdown/PDF
+- [x] Ticket quality scoring
+- [x] Domain-specific prompts
+- [x] Export to Excel/Markdown
+- [x] Sprint reports
+- [x] Change detection
 - [ ] Epic-level documentation generation
 - [ ] Slack/Teams integration
-- [ ] Custom prompt templates
+- [ ] PDF export with styling
 
 ---
 

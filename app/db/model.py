@@ -27,6 +27,17 @@ class Ticket(Base):
     test_cases_generated = Column(Boolean, default=False)
     posted_to_jira = Column(Boolean, default=False)
 
+    # Quality scoring
+    quality_score = Column(Integer, nullable=True)
+    quality_summary = Column(Text, nullable=True)
+    quality_issues = Column(Text, nullable=True)  # JSON array
+    quality_suggestions = Column(Text, nullable=True)  # JSON array
+    quality_scored_at = Column(DateTime, nullable=True)
+
+    # Change detection
+    content_hash = Column(String, nullable=True)
+    content_changed = Column(Boolean, default=False)
+
     generated_content = relationship("GeneratedContent", back_populates="ticket")
 
 

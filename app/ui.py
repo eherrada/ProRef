@@ -9,11 +9,15 @@ from app.config import load_config, save_config, get_config
 from app.paths import ensure_dirs
 from app.db.model import SessionLocal, Ticket, GeneratedContent, TicketEmbedding, init_db
 from app.db.embedding import save_embedding
+from app.db.save import save_quality_score, mark_content_reviewed, reset_ticket_for_regeneration
 from app.logic.embedder import get_embedding
 from app.logic.question_generator import generate_questions
 from app.logic.test_case_generator import generate_test_cases
 from app.logic.matching import match_text_to_ticket
 from app.logic.related_tickets import find_related_tickets
+from app.logic.quality_scorer import score_ticket_quality, get_score_color, get_score_label
+from app.logic.prompts import get_domain_list, get_prompt, DOMAIN_PRESETS
+from app.logic.exporter import export_tickets_to_excel, export_ticket_to_markdown, export_sprint_report_markdown
 from app.jira.fetcher import (
     fetch_backlog, fetch_jira_projects, fetch_jira_boards,
     fetch_jira_sprints, fetch_jira_issue_types, test_jira_connection
@@ -748,6 +752,103 @@ st.markdown("""
     .alert-content { flex: 1; }
     .alert-title { color: var(--text-primary); font-weight: 600; margin-bottom: 0.25rem; }
     .alert-text { color: var(--text-secondary); font-size: 0.85rem; }
+
+    /* ===== QUALITY SCORE ===== */
+    .quality-score {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        font-size: 0.85rem;
+        font-weight: 700;
+    }
+
+    .quality-score.ready {
+        background: var(--success-muted);
+        color: var(--success);
+        border: 2px solid var(--success);
+    }
+
+    .quality-score.needs-work {
+        background: var(--warning-muted);
+        color: var(--warning);
+        border: 2px solid var(--warning);
+    }
+
+    .quality-score.not-ready {
+        background: var(--error-muted);
+        color: var(--error);
+        border: 2px solid var(--error);
+    }
+
+    /* ===== CHANGE INDICATOR ===== */
+    .change-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0.5rem;
+        background: var(--warning-muted);
+        color: var(--warning);
+        border-radius: var(--radius-sm);
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    /* ===== DOMAIN SELECTOR ===== */
+    .domain-card {
+        background: var(--bg-elevated);
+        border: 2px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+    }
+
+    .domain-card:hover {
+        border-color: var(--border-hover);
+    }
+
+    .domain-card.active {
+        border-color: var(--accent);
+        background: var(--accent-muted);
+    }
+
+    .domain-name {
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: 0.85rem;
+    }
+
+    .domain-desc {
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+    }
+
+    /* ===== REPORT STATS ===== */
+    .report-stat {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 1rem;
+        text-align: center;
+    }
+
+    .report-stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    .report-stat-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -787,13 +888,24 @@ def get_stats():
         GeneratedContent.content_type == 'test_cases',
         GeneratedContent.published == False
     ).count()
+    # Quality stats
+    scored = session.query(Ticket).filter(Ticket.quality_score != None).count()
+    quality_ready = session.query(Ticket).filter(Ticket.quality_score >= 8).count()
+    quality_needs_work = session.query(Ticket).filter(Ticket.quality_score >= 5, Ticket.quality_score < 8).count()
+    quality_not_ready = session.query(Ticket).filter(Ticket.quality_score < 5).count()
+    changed = session.query(Ticket).filter(Ticket.content_changed == True).count()
     session.close()
     return {
         "total": total, "embedded": embedded,
         "with_questions": with_questions, "with_tests": with_tests,
         "pub_q": pub_q, "pub_t": pub_t,
         "pending_q": pending_q, "pending_t": pending_t,
-        "published": pub_q + pub_t
+        "published": pub_q + pub_t,
+        "scored": scored,
+        "quality_ready": quality_ready,
+        "quality_needs_work": quality_needs_work,
+        "quality_not_ready": quality_not_ready,
+        "changed": changed
     }
 
 
@@ -871,10 +983,11 @@ def render_header():
         ("tickets", "Tickets"),
         ("generate", "Generate"),
         ("publish", "Publish"),
+        ("reports", "Reports"),
         ("settings", "Settings"),
     ]
 
-    cols = st.columns([1, 1, 1, 1, 1, 2])
+    cols = st.columns([1, 1, 1, 1, 1, 1, 1])
     for i, (key, label) in enumerate(nav_items):
         with cols[i]:
             is_active = st.session_state.current_page == key or \
@@ -1048,6 +1161,37 @@ def page_tickets():
     session = SessionLocal()
     all_tickets = session.query(Ticket).order_by(Ticket.updated_at.desc()).all()
 
+    # Export buttons
+    if all_tickets:
+        exp_col1, exp_col2, exp_col3, _ = st.columns([1, 1, 1, 3])
+        with exp_col1:
+            if st.button("Export Excel", type="secondary", use_container_width=True):
+                try:
+                    buffer = export_tickets_to_excel(all_tickets)
+                    st.download_button(
+                        "Download Excel",
+                        data=buffer,
+                        file_name=f"proref_tickets_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_excel"
+                    )
+                except ImportError:
+                    st.warning("Install openpyxl: pip install openpyxl")
+        with exp_col2:
+            if st.button("Score All", type="secondary", use_container_width=True):
+                progress = st.progress(0)
+                for i, ticket in enumerate(all_tickets):
+                    progress.progress((i + 1) / len(all_tickets), f"Scoring {ticket.jira_key}...")
+                    if not ticket.quality_score:
+                        try:
+                            score_data = score_ticket_quality(ticket)
+                            save_quality_score(ticket.id, score_data)
+                        except Exception as e:
+                            st.error(f"Error scoring {ticket.jira_key}: {e}")
+                progress.empty()
+                st.success("Scoring complete!")
+                st.rerun()
+
     if not all_tickets:
         st.markdown("""
             <div class="empty-state">
@@ -1152,18 +1296,34 @@ def page_tickets():
         else:
             t_badge = '<span class="badge badge-neutral">T --</span>'
 
+        # Quality score badge
+        score_badge = ""
+        if ticket.quality_score:
+            score_class = "ready" if ticket.quality_score >= 8 else "needs-work" if ticket.quality_score >= 5 else "not-ready"
+            score_badge = f'<span class="quality-score {score_class}">{ticket.quality_score}</span>'
+
+        # Change indicator
+        change_badge = ""
+        if ticket.content_changed:
+            change_badge = '<span class="change-indicator">CHANGED</span>'
+
         with st.expander(f"**{ticket.jira_key}** - {ticket.title[:60]}{'...' if len(ticket.title or '') > 60 else ''}"):
             st.markdown(f"""
-                <div style="margin-bottom: 1rem;">
+                <div style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                     <span class="ticket-type">{ticket.issue_type}</span>
+                    {score_badge}
                     {q_badge} {t_badge}
+                    {change_badge}
                 </div>
             """, unsafe_allow_html=True)
+
+            if ticket.quality_summary:
+                st.markdown(f"**Quality:** {ticket.quality_summary}")
 
             st.markdown(ticket.description[:500] + "..." if ticket.description and len(ticket.description) > 500 else ticket.description or "_No description_")
 
             # Action buttons
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
                 if not status["q_published"] and not status["q_pending"]:
                     if st.button("Generate Questions", key=f"gen_q_{ticket.id}", use_container_width=True):
@@ -1175,6 +1335,18 @@ def page_tickets():
                     if st.button("Generate Tests", key=f"gen_t_{ticket.id}", use_container_width=True):
                         st.session_state.selected_ticket = ticket.jira_key
                         st.session_state.current_page = "tests"
+                        st.rerun()
+            with col3:
+                if not ticket.quality_score:
+                    if st.button("Score", key=f"score_{ticket.id}", use_container_width=True):
+                        with st.spinner("Scoring..."):
+                            score_data = score_ticket_quality(ticket)
+                            save_quality_score(ticket.id, score_data)
+                        st.rerun()
+            with col4:
+                if ticket.content_changed:
+                    if st.button("Mark Reviewed", key=f"review_{ticket.id}", use_container_width=True):
+                        mark_content_reviewed(ticket.id)
                         st.rerun()
 
     # Pagination controls
@@ -1267,6 +1439,30 @@ def page_questions():
 
     ensure_dirs()
     session = SessionLocal()
+
+    # Domain selection
+    st.markdown("### Select Domain")
+    st.caption("Choose a domain preset for context-aware question generation")
+
+    domains = get_domain_list()
+    if "selected_domain" not in st.session_state:
+        st.session_state.selected_domain = "generic"
+
+    domain_cols = st.columns(len(domains))
+    for i, domain in enumerate(domains):
+        with domain_cols[i]:
+            is_active = st.session_state.selected_domain == domain["key"]
+            if st.button(
+                domain["name"],
+                key=f"dom_{domain['key']}",
+                type="primary" if is_active else "secondary",
+                use_container_width=True
+            ):
+                st.session_state.selected_domain = domain["key"]
+                st.rerun()
+
+    st.caption(f"**{DOMAIN_PRESETS[st.session_state.selected_domain]['description']}**")
+    st.markdown("---")
 
     pending = session.query(Ticket).filter(
         Ticket.issue_type != "Spike",
@@ -1397,6 +1593,30 @@ def page_tests():
 
     ensure_dirs()
     session = SessionLocal()
+
+    # Domain selection
+    st.markdown("### Select Domain")
+    st.caption("Choose a domain preset for context-aware test case generation")
+
+    domains = get_domain_list()
+    if "selected_domain_tests" not in st.session_state:
+        st.session_state.selected_domain_tests = "generic"
+
+    domain_cols = st.columns(len(domains))
+    for i, domain in enumerate(domains):
+        with domain_cols[i]:
+            is_active = st.session_state.selected_domain_tests == domain["key"]
+            if st.button(
+                domain["name"],
+                key=f"dom_t_{domain['key']}",
+                type="primary" if is_active else "secondary",
+                use_container_width=True
+            ):
+                st.session_state.selected_domain_tests = domain["key"]
+                st.rerun()
+
+    st.caption(f"**{DOMAIN_PRESETS[st.session_state.selected_domain_tests]['description']}**")
+    st.markdown("---")
 
     pending = session.query(Ticket).filter(
         Ticket.test_cases_generated == False,
@@ -1577,6 +1797,200 @@ def page_publish():
     session.close()
 
 
+# ============ REPORTS ============
+
+def page_reports():
+    st.markdown("""
+        <div class="page-header">
+            <h1 class="page-title">Reports</h1>
+            <p class="page-subtitle">Sprint reports and export options</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    session = SessionLocal()
+    all_tickets = session.query(Ticket).order_by(Ticket.updated_at.desc()).all()
+
+    if not all_tickets:
+        st.markdown("""
+            <div class="empty-state">
+                <div class="empty-icon">*</div>
+                <div class="empty-title">No tickets yet</div>
+                <div class="empty-text">Fetch tickets from Jira to generate reports</div>
+            </div>
+        """, unsafe_allow_html=True)
+        session.close()
+        return
+
+    stats = get_stats()
+
+    # Summary stats
+    st.markdown("### Sprint Summary")
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.markdown(f"""
+            <div class="report-stat">
+                <div class="report-stat-value">{stats['total']}</div>
+                <div class="report-stat-label">Total Tickets</div>
+            </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+            <div class="report-stat">
+                <div class="report-stat-value" style="color: var(--success);">{stats['quality_ready']}</div>
+                <div class="report-stat-label">Ready (8-10)</div>
+            </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""
+            <div class="report-stat">
+                <div class="report-stat-value" style="color: var(--warning);">{stats['quality_needs_work']}</div>
+                <div class="report-stat-label">Needs Work (5-7)</div>
+            </div>
+        """, unsafe_allow_html=True)
+    with col4:
+        st.markdown(f"""
+            <div class="report-stat">
+                <div class="report-stat-value" style="color: var(--error);">{stats['quality_not_ready']}</div>
+                <div class="report-stat-label">Not Ready (1-4)</div>
+            </div>
+        """, unsafe_allow_html=True)
+    with col5:
+        unscored = stats['total'] - stats['scored']
+        st.markdown(f"""
+            <div class="report-stat">
+                <div class="report-stat-value">{unscored}</div>
+                <div class="report-stat-label">Not Scored</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Export options
+    st.markdown("### Export Options")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("""
+            <div class="card" style="height: 150px;">
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">*</div>
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">Sprint Report</div>
+                <div style="color: var(--text-muted); font-size: 0.8rem;">Markdown summary of sprint status</div>
+            </div>
+        """, unsafe_allow_html=True)
+        if st.button("Generate Report", key="gen_report", use_container_width=True):
+            report = export_sprint_report_markdown(all_tickets)
+            st.download_button(
+                "Download Report",
+                data=report,
+                file_name=f"sprint_report_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown",
+                key="dl_report"
+            )
+
+    with col2:
+        st.markdown("""
+            <div class="card" style="height: 150px;">
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">*</div>
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">Excel Export</div>
+                <div style="color: var(--text-muted); font-size: 0.8rem;">Full data with all tickets and content</div>
+            </div>
+        """, unsafe_allow_html=True)
+        if st.button("Export Excel", key="exp_excel_report", use_container_width=True):
+            try:
+                buffer = export_tickets_to_excel(all_tickets)
+                st.download_button(
+                    "Download Excel",
+                    data=buffer,
+                    file_name=f"proref_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_excel_report"
+                )
+            except ImportError:
+                st.warning("Install openpyxl: pip install openpyxl")
+
+    with col3:
+        st.markdown("""
+            <div class="card" style="height: 150px;">
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">*</div>
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">Ticket Detail</div>
+                <div style="color: var(--text-muted); font-size: 0.8rem;">Export single ticket as Markdown</div>
+            </div>
+        """, unsafe_allow_html=True)
+        ticket_options = [f"{t.jira_key} - {t.title[:30]}..." for t in all_tickets]
+        selected_ticket = st.selectbox("Select ticket", ticket_options, key="sel_ticket_export", label_visibility="collapsed")
+        if selected_ticket and st.button("Export Ticket", key="exp_ticket", use_container_width=True):
+            ticket_key = selected_ticket.split(" - ")[0]
+            ticket = session.query(Ticket).filter_by(jira_key=ticket_key).first()
+            if ticket:
+                md_content = export_ticket_to_markdown(ticket)
+                st.download_button(
+                    "Download",
+                    data=md_content,
+                    file_name=f"{ticket_key}.md",
+                    mime="text/markdown",
+                    key="dl_ticket_md"
+                )
+
+    st.markdown("---")
+
+    # Quality breakdown
+    st.markdown("### Quality Breakdown")
+
+    # Tickets needing attention
+    needs_attention = [t for t in all_tickets if t.quality_score and t.quality_score < 5]
+    if needs_attention:
+        st.markdown("#### Tickets Needing Attention")
+        st.caption("These tickets scored below 5 and may need refinement before development")
+
+        for ticket in needs_attention[:10]:
+            with st.expander(f"**{ticket.jira_key}** (Score: {ticket.quality_score}) - {ticket.title[:50]}..."):
+                if ticket.quality_summary:
+                    st.warning(f"**Issue:** {ticket.quality_summary}")
+                if ticket.quality_suggestions:
+                    try:
+                        suggestions = json.loads(ticket.quality_suggestions)
+                        if suggestions:
+                            st.markdown("**Suggestions:**")
+                            for s in suggestions:
+                                st.markdown(f"- {s}")
+                    except:
+                        pass
+
+    # Changed tickets
+    changed_tickets = [t for t in all_tickets if t.content_changed]
+    if changed_tickets:
+        st.markdown("#### Changed Since Generation")
+        st.caption("These tickets have been modified in Jira since content was generated")
+
+        for ticket in changed_tickets[:10]:
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f"**{ticket.jira_key}** - {ticket.title[:60]}...")
+            with col2:
+                if st.button("Mark Reviewed", key=f"rev_{ticket.id}", use_container_width=True):
+                    mark_content_reviewed(ticket.id)
+                    st.rerun()
+
+    # Status distribution
+    st.markdown("#### Tickets by Status")
+
+    status_groups = {}
+    for ticket in all_tickets:
+        status = ticket.status or "Unknown"
+        if status not in status_groups:
+            status_groups[status] = []
+        status_groups[status].append(ticket)
+
+    for status, group in sorted(status_groups.items(), key=lambda x: -len(x[1])):
+        avg_score = sum(t.quality_score or 0 for t in group) / max(1, sum(1 for t in group if t.quality_score))
+        scored_count = sum(1 for t in group if t.quality_score)
+        st.markdown(f"**{status}**: {len(group)} tickets (Avg score: {avg_score:.1f} from {scored_count} scored)")
+
+    session.close()
+
+
 # ============ SETTINGS ============
 
 def page_settings():
@@ -1716,6 +2130,8 @@ def main():
         page_tests()
     elif page == "publish":
         page_publish()
+    elif page == "reports":
+        page_reports()
     elif page == "settings":
         page_settings()
     else:
