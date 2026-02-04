@@ -9,15 +9,15 @@ def save_or_update_ticket(ticket_data):
         incoming_updated = ticket_data['updated_at']
         local_updated = existing.updated_at
 
-        # Eliminar tzinfo para comparación limpia (ambos sin zona)
+        # Remove tzinfo for clean comparison (both without timezone)
         if incoming_updated and local_updated:
             if incoming_updated.replace(tzinfo=None) > local_updated.replace(tzinfo=None):
                 for k, v in ticket_data.items():
                     setattr(existing, k, v)
                 existing.fetched_at = datetime.utcnow()
-                existing.questions_generated = False  # resetear preguntas
+                existing.questions_generated = False  # reset questions
         else:
-            # fallback si alguno es None
+            # fallback if either is None
             for k, v in ticket_data.items():
                 setattr(existing, k, v)
             existing.fetched_at = datetime.utcnow()

@@ -1,141 +1,327 @@
-# 🤖 ProRef — Product Refinement Automation Assistant
+<div align="center">
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+# ProRef
 
-**ProRef** is an intelligent assistant designed to streamline your QA and product refinement workflows by leveraging AI and integrating directly with Jira.
+### AI-Powered Product Refinement Assistant
 
----
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io)
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-## 🚀 What It Does
+**Transform your Jira backlog into actionable insights with AI-generated refinement questions and test cases.**
 
-- 🔄 Fetches tickets from Jira (Stories, Bugs, Tasks — excludes Spikes)
-- 🧠 Analyzes and embeds tickets for semantic understanding
-- 💬 Matches transcripts of refinement meetings to existing tickets
-- ❓ Automatically generates pre-refinement questions (GPT-powered)
-- 🧪 Test case generation from ticket context
-- 📄 [Planned] Live documentation generation and update
-- ☁️ [Planned] Optional posting of results back to Jira
+[Features](#-features) • [Demo](#-demo) • [Installation](#-installation) • [Usage](#-usage) • [Architecture](#-architecture)
+
+</div>
 
 ---
 
-## 📁 Project Structure
+## 🎯 The Problem
+
+Product and QA teams spend countless hours in refinement sessions trying to:
+- Identify edge cases and missing requirements
+- Write comprehensive test cases
+- Ensure tickets are implementation-ready
+
+**ProRef automates this process** by analyzing your Jira tickets and generating intelligent questions and test cases using AI.
+
+---
+
+## ✨ Features
+
+### 🔄 Jira Integration
+- **Automatic sync** with your Jira backlog via REST API
+- **Smart JQL builder** with project, board, and sprint selectors
+- **Publish back to Jira** — generated content appears as formatted comments
+
+### 🤖 Multi-Provider AI
+- **OpenAI** (GPT-4, GPT-3.5)
+- **Anthropic** (Claude 3.5 Sonnet, Haiku)
+- **Google** (Gemini 1.5 Pro, Flash)
+
+### ❓ Refinement Questions
+AI analyzes each ticket to generate clarifying questions that uncover:
+- Edge cases and boundary conditions
+- Implicit assumptions
+- Missing acceptance criteria
+- Integration dependencies
+
+### 🧪 Structured Test Cases
+Generates QA-ready test cases in a structured format:
+```
+TC-1: User login with valid credentials
+PRE: User account exists and is active
+STEPS:
+  1. Navigate to login page
+  2. Enter valid email and password
+  3. Click "Sign In"
+EXPECTED:
+  - User is redirected to dashboard
+  - Welcome message displays user's name
+```
+
+### 🔍 Semantic Search
+- **Embedding-based matching** finds related tickets
+- **Cross-ticket awareness** prevents duplicate work
+- **Smart suggestions** based on similarity
+
+### 📊 Workflow Dashboard
+Visual progress tracking through the refinement pipeline:
 
 ```
-app/
-├── db/         # SQLite models, sessions, and embedding storage
-├── io/         # Input readers (e.g., transcript import)
-├── jira/       # Jira API integration and ticket fetching
-├── logic/      # Embedding, matching, generation logic
-├── publish/    # Output handlers (Markdown, Jira posting)
-scripts/        # CLI scripts to run specific tasks
-data/           # Local data store (transcripts, outputs, DB)
-tests/          # [WIP] Unit tests
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  FETCH   │ →  │  EMBED   │ →  │ GENERATE │ →  │ PUBLISH  │
+│  ✓ 21    │    │  ✓ 21    │    │  ⏳ 15   │    │   8/21   │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
 ```
 
 ---
 
-## ⚙️ Setup
+## 🖥 Demo
 
-1. Clone the repository:
+### Web Interface
+Modern dark-themed UI built with Streamlit:
+
+- **Dashboard** — Workflow progress at a glance
+- **Tickets** — Browse with filters and pagination
+- **Generate** — Create questions and test cases
+- **Publish** — Review and push to Jira
+- **Settings** — Configure AI providers and Jira connection
+
+### CLI
+```bash
+$ proref status
+
+ProRef Status
+========================================
+
+Tickets:
+  Total:                 21
+  With questions:        15
+  With test cases:       12
+
+Publication:
+  Questions published:   8
+  Test cases published:  6
+  Pending:               13
+```
+
+---
+
+## 🚀 Installation
+
+### Prerequisites
+- Python 3.10+
+- Jira Cloud account with API access
+- OpenAI/Anthropic/Google AI API key
+
+### Quick Start
 
 ```bash
-git clone https://github.com/your-username/proref.git
+# Clone the repository
+git clone https://github.com/yourusername/proref.git
 cd proref
-```
 
-2. Create and activate a virtual environment:
-
-```bash
+# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -e .
+
+# Copy and configure environment
+cp .env.example .env
+cp data/config.example.json data/config.json
+# Edit .env or use the web UI to configure
 ```
 
-3. Install dependencies and the project in editable mode:
+### Configuration
+
+You can configure ProRef via environment variables or the web UI:
+
+```env
+# .env
+JIRA_BASE_URL=https://your-org.atlassian.net
+JIRA_USER=your-email@example.com
+JIRA_API_TOKEN=your-api-token
+OPENAI_API_KEY=sk-your-key
+```
+
+Or launch the UI and go to **Settings**:
+```bash
+proref ui
+```
+
+---
+
+## 📖 Usage
+
+### Web Interface (Recommended)
+```bash
+proref ui
+# Opens http://localhost:8501
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `proref fetch` | Import tickets from Jira |
+| `proref embed` | Generate embeddings for semantic search |
+| `proref questions` | Generate refinement questions |
+| `proref testcases` | Generate test cases |
+| `proref publish` | Interactively publish to Jira |
+| `proref status` | Show processing statistics |
+| `proref chat` | Interactive Q&A about tickets |
+| `proref ui` | Launch web interface |
+
+### Workflow Example
 
 ```bash
-pip install -e .
+# 1. Fetch tickets from Jira
+proref fetch
+
+# 2. Generate embeddings for semantic search
+proref embed
+
+# 3. Generate questions (with auto-publish)
+proref questions --publish
+
+# 4. Generate test cases
+proref testcases --publish
+
+# 5. Check status
+proref status
 ```
-
-4. Create a `.env` file with the following variables:
-
-```
-# Jira Configuration
-JIRA_BASE_URL=https://yourcompany.atlassian.net
-JIRA_USER=you@example.com
-JIRA_API_TOKEN=your_jira_api_token
-
-# Jira Query Configuration
-JIRA_PROJECT=YOUR_PROJECT_KEY
-JIRA_SPRINT=your-sprint-name
-# You can either use the default JQL (which uses JIRA_PROJECT and JIRA_SPRINT)
-# or provide your own custom JQL query:
-JIRA_JQL=project = YOUR_PROJECT_KEY AND Sprint = "your-sprint-name" ORDER BY updated DESC
-
-# OpenAI Configuration
-OPENAI_API_KEY=sk-your_openai_api_key
-
-# OpenAI Model Configuration (Optional)
-OPENAI_MODEL_QUESTIONS=gpt-4-turbo
-OPENAI_MODEL_TESTCASES=gpt-3.5-turbo
-```
-
-The default JQL query will be constructed using `JIRA_PROJECT` and `JIRA_SPRINT` if `JIRA_JQL` is not provided. If you need a custom query, you can set `JIRA_JQL` directly.
-
-The `pip install -e .` command will install all necessary dependencies from `setup.py` and make the project's scripts available in your environment.
 
 ---
 
-## �� Running Examples
+## 🏗 Architecture
 
-- Fetch backlog tickets:
-  ```bash
-  python scripts/fetch_backlog.py
-  ```
+```
+proref/
+├── app/
+│   ├── cli.py              # Typer CLI application
+│   ├── ui.py               # Streamlit web interface
+│   ├── config.py           # Configuration management
+│   ├── paths.py            # Path constants
+│   │
+│   ├── db/
+│   │   ├── model.py        # SQLAlchemy models
+│   │   ├── save.py         # Data persistence
+│   │   └── embedding.py    # Vector storage
+│   │
+│   ├── jira/
+│   │   ├── fetcher.py      # Jira API client
+│   │   └── publisher.py    # ADF comment formatting
+│   │
+│   ├── logic/
+│   │   ├── embedder.py     # Text embeddings
+│   │   ├── matching.py     # Semantic search
+│   │   ├── question_generator.py
+│   │   ├── test_case_generator.py
+│   │   └── related_tickets.py
+│   │
+│   └── utils/
+│       └── retry.py        # Retry decorator
+│
+├── data/
+│   ├── proref.db           # SQLite database
+│   └── config.json         # User configuration
+│
+├── tests/                  # 73 unit tests
+└── scripts/                # Legacy CLI scripts
+```
 
-- Generate embeddings for tickets:
-  ```bash
-  python scripts/embed_tickets.py
-  ```
+### Tech Stack
 
-- Match a transcript to ticket(s):
-  ```bash
-  python scripts/test_match.py data/transcripts/yourfile.txt
-  ```
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Streamlit with custom CSS |
+| **CLI** | Typer + Rich |
+| **Database** | SQLite + SQLAlchemy |
+| **AI** | OpenAI / Anthropic / Google APIs |
+| **Embeddings** | text-embedding-3-small (1536 dims) |
+| **External API** | Jira REST API v3 |
 
-- Generate QA questions:
-  ```bash
-  python scripts/generate_questions.py
-  ```
+### Data Flow
 
-- Interactive chat with your tickets:
-  ```bash
-  python scripts/chat.py
-  ```
+```
+┌─────────┐     ┌─────────────┐     ┌──────────┐
+│  Jira   │────▶│   ProRef    │────▶│  SQLite  │
+│  Cloud  │◀────│   Engine    │◀────│    DB    │
+└─────────┘     └─────────────┘     └──────────┘
+                      │
+                      ▼
+               ┌─────────────┐
+               │   AI APIs   │
+               │ (GPT/Claude)│
+               └─────────────┘
+```
 
 ---
 
-## 🌱 Future Improvements
+## 🧪 Testing
 
-- **Duplicate Prevention**: Avoid re-generating questions for tickets that have already been processed to save API tokens.
-- **Live Documentation**: Create and maintain a dedicated, version-controlled Markdown file for each ticket, containing its summary, key questions, and suggested tests.
-- **Cross-Ticket Awareness**: Use embeddings to detect related tickets and provide impact analysis (e.g., "This change might affect...").
-- **Jira Integration**: Optionally post generated questions or test cases back into the corresponding Jira ticket as comments.
-- **Feature/Epic Grouping**: Generate documentation and analysis aggregated at the epic or feature level.
-- **Web Dashboard**: A lightweight web interface to visually explore tickets, questions, and documentation.
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=app --cov-report=html
+
+# Run specific test file
+pytest tests/test_generators.py -v
+```
+
+**73 tests** covering:
+- Configuration management
+- Database models
+- Question/test generation
+- Jira integration
+- Embedding operations
+- Retry logic
 
 ---
 
-## 📘 Philosophy
+## 🛣 Roadmap
 
-ProRef is not just automation. It's structured augmentation for QA and product teams — turning noisy backlogs and meetings into actionable, testable knowledge.
+- [x] Multi-provider AI support
+- [x] Structured test case format
+- [x] Web UI with modern design
+- [x] Jira comment publishing (ADF format)
+- [x] Semantic ticket search
+- [ ] Batch processing with progress tracking
+- [ ] Export to Markdown/PDF
+- [ ] Epic-level documentation generation
+- [ ] Slack/Teams integration
+- [ ] Custom prompt templates
+
+---
 
 ## 🤝 Contributing
 
-Feel free to open issues or submit pull requests. This is a portfolio project showcasing AI-powered workflow automation.
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
 
 ## 📄 License
 
-This project is open source and available under the [MIT License](LICENSE).
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+---
+
+<div align="center">
+
+**Built with ❤️ for QA and Product teams**
+
+[Report Bug](https://github.com/yourusername/proref/issues) • [Request Feature](https://github.com/yourusername/proref/issues)
+
+</div>

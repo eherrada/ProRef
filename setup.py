@@ -13,13 +13,26 @@ setup(
         "tiktoken>=0.9.0",
         "tqdm>=4.67.1",
         "httpx>=0.28.1",
-        "pydantic>=2.11.4"
+        "pydantic>=2.11.4",
+        "typer>=0.9.0",
+        "streamlit>=1.30.0",
     ],
+    extras_require={
+        "dev": [
+            "pytest>=7.0.0",
+            "pytest-cov>=4.0.0",
+        ],
+    },
+    entry_points={
+        "console_scripts": [
+            "proref=app.cli:main",
+        ],
+    },
     python_requires=">=3.8",
     author="ProRef Team",
     author_email="eherrada@gmail.com",
     description="Product Refinement Automation Assistant",
-    long_description=open("README.md").read(),
+    long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/your-username/proref",
     classifiers=[
@@ -31,4 +44,4 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
     ],
-) 
+)

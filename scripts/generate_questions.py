@@ -1,21 +1,30 @@
-import os
+#!/usr/bin/env python3
+"""Wrapper script for generating questions."""
+
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from app.paths import QUESTIONS_DIR, ensure_dirs
 from app.db.model import SessionLocal, Ticket
 from app.logic.question_generator import generate_questions
 
-# Ruta de salida
-output_path = os.path.abspath("../data/questions/questions_by_ticket.md")
-os.makedirs(os.path.dirname(output_path), exist_ok=True)
+ensure_dirs()
 
-# Obtener tickets que aún no fueron procesados
 session = SessionLocal()
 tickets = session.query(Ticket).filter(
     Ticket.issue_type != "Spike",
     Ticket.questions_generated != True
 ).all()
 
-with open(output_path, "w", encoding="utf-8") as f:
-    for idx, ticket in enumerate(tickets):
-        print(f"🔄 Generating questions for {ticket.jira_key} ({idx+1}/{len(tickets)})")
+output_path = QUESTIONS_DIR / "questions_by_ticket.md"
+
+with open(output_path, "a", encoding="utf-8") as f:
+    for idx, ticket in enumerate(tickets, 1):
+        print(f"Generating questions for {ticket.jira_key} ({idx}/{len(tickets)})")
         questions = generate_questions(ticket)
 
         f.write(f"## {ticket.jira_key} - {ticket.title.strip() if ticket.title else ''}\n")
@@ -25,7 +34,6 @@ with open(output_path, "w", encoding="utf-8") as f:
             f.write("**Generated questions:**\n")
             for q in questions:
                 f.write(f"- {q}\n")
-            # Marcar el ticket como procesado
             ticket.questions_generated = True
             session.add(ticket)
         else:
@@ -35,4 +43,4 @@ with open(output_path, "w", encoding="utf-8") as f:
 
 session.commit()
 session.close()
-print(f"✅ Preguntas generadas y guardadas en: {output_path}")
+print(f"Questions saved to: {output_path}")

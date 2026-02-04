@@ -1,12 +1,19 @@
+#!/usr/bin/env python3
+"""Wrapper script for generating test cases."""
+
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from app.paths import TESTCASES_DIR, ensure_dirs
 from app.db.model import SessionLocal, Ticket
 from app.logic.test_case_generator import generate_test_cases
-import os
 
-# Ruta de salida
-output_path = "../data/test_cases/test_cases_by_ticket.md"
-os.makedirs(os.path.dirname(output_path), exist_ok=True)
+ensure_dirs()
 
-# Obtener todos los tickets válidos
 session = SessionLocal()
 tickets = session.query(Ticket).filter(
     Ticket.test_cases_generated == False,
@@ -15,9 +22,11 @@ tickets = session.query(Ticket).filter(
 ).all()
 session.close()
 
-with open(output_path, "w", encoding="utf-8") as f:
+output_path = TESTCASES_DIR / "test_cases_by_ticket.md"
+
+with open(output_path, "a", encoding="utf-8") as f:
     for idx, ticket in enumerate(tickets, 1):
-        print(f"🧪 Generating test cases for {ticket.jira_key} ({idx}/{len(tickets)})")
+        print(f"Generating test cases for {ticket.jira_key} ({idx}/{len(tickets)})")
         test_cases = generate_test_cases(ticket)
 
         f.write(f"## {ticket.jira_key} - {ticket.title.strip()}\n")
@@ -47,7 +56,7 @@ with open(output_path, "w", encoding="utf-8") as f:
                             expected = item.split(":", 1)[-1].strip()
 
                     test_case_count += 1
-                    f.write(f"### ✅ Test Case {test_case_count}\n")
+                    f.write(f"### Test Case {test_case_count}\n")
                     f.write(f"- **Scenario:** _{scenario}_\n")
                     f.write(f"- **Action:** _{action}_\n")
                     f.write(f"- **Expected behavior:** _{expected}_\n")
@@ -67,4 +76,4 @@ with open(output_path, "w", encoding="utf-8") as f:
         else:
             f.write("_No test cases generated._\n\n---\n\n")
 
-print(f"✅ Test cases saved to: {output_path}")
+print(f"Test cases saved to: {output_path}")
